@@ -1,0 +1,2112 @@
+openapi: 3.0.3
+info:
+  title: Onlabel
+  version: 0.1.0
+  description: >-
+    Compliance-gated commercial orchestration for life sciences. Candidate actions are
+    evaluated against local label version, approved asset validity, engagement mode,
+    HCP consent and disclosure duty before ranking, so field teams receive only what is
+    executable today. Interactions return through mandatory transfer-of-value capture
+    and adverse-event routing, and the medical-commercial separation is enforced as a
+    read boundary rather than a policy.
+  x-product-slug: ai-health-onlabel
+  x-source: ai-in-health/Accenture-Intelligent-Commercial-Solution-Life-Sciences/
+servers:
+  - url: https://api.example.com
+tags:
+  - name: Labels
+    description: Local label versions, approved claims, and approved asset validity
+  - name: Permissions
+    description: Engagement mode matrix, consent, and per-action permission evaluation
+  - name: Actions
+    description: Gated next-best-action queue, targeting rationale, and unblock requests
+  - name: Interactions
+    description: Field interactions with mandatory closure duties
+  - name: Transparency
+    description: Transfer-of-value capture and statutory disclosure reconciliation
+  - name: Safety
+    description: Adverse event and product complaint intake with pharmacovigilance routing
+  - name: Medical
+    description: Unsolicited information requests and scientific exchange behind the wall
+  - name: Payer
+    description: Value dossiers and health-system evidence engagement
+  - name: Governance
+    description: MLR review, affiliate market activation, and control events
+  - name: Reporting
+    description: Engagement performance, cost per engaged HCP, and asset utilisation
+paths:
+  /v1/brands/{brandId}/label-versions:
+    parameters:
+      - $ref: "#/components/parameters/BrandId"
+    get:
+      operationId: listLabelVersions
+      summary: List locally approved label versions by market
+      tags: [Labels]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: market
+          in: query
+          schema:
+            type: string
+            example: DE
+      responses:
+        "200":
+          description: Label versions page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeLabelVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: publishLabelVersion
+      summary: Publish a label version and cascade withdrawal of affected assets
+      description: >-
+        Publishing a new local label immediately withdraws every asset and queued
+        action in that market whose claim set is no longer on-label.
+      tags: [Labels]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabelVersionCreate"
+      responses:
+        "201":
+          description: Label version published with withdrawal cascade summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeLabelVersion"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/approved-claims:
+    get:
+      operationId: listApprovedClaims
+      summary: List approved claims with their reference mappings
+      tags: [Labels]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: brandId
+          in: query
+          schema:
+            type: string
+        - name: market
+          in: query
+          schema:
+            type: string
+        - name: onLabelOnly
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Approved claims page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeApprovedClaim"
+  /v1/approved-assets:
+    get:
+      operationId: listApprovedAssets
+      summary: List approved assets with validity windows and market activations
+      tags: [Labels]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: brandId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [in_review, approved, expiring, expired, withdrawn]
+      responses:
+        "200":
+          description: Approved assets page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeApprovedAsset"
+  /v1/approved-assets/{assetId}/withdrawal:
+    parameters:
+      - $ref: "#/components/parameters/AssetId"
+    post:
+      operationId: withdrawApprovedAsset
+      summary: Withdraw an asset and purge dependent queued actions
+      tags: [Labels]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, initiatedBy]
+              properties:
+                reason:
+                  type: string
+                  enum:
+                    [
+                      label_change,
+                      approval_expired,
+                      reference_retracted,
+                      safety_update,
+                      affiliate_request,
+                      compliance_finding,
+                    ]
+                initiatedBy:
+                  type: string
+                markets:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "202":
+          description: Withdrawal accepted and dependent actions purged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeApprovedAsset"
+  /v1/engagement-modes:
+    get:
+      operationId: listEngagementModes
+      summary: List engagement modes with permitted roles, content classes and channels
+      tags: [Permissions]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Engagement modes page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeEngagementMode"
+  /v1/actions/evaluate:
+    post:
+      operationId: evaluateActionPermission
+      summary: Evaluate whether an audience, message and channel triple is executable now
+      tags: [Permissions]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionEvaluationRequest"
+      responses:
+        "200":
+          description: Permission evaluation with named refusals and their owners
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopePermissionEvaluation"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/hcps/{hcpId}/consent:
+    parameters:
+      - $ref: "#/components/parameters/HcpId"
+    get:
+      operationId: getHcpConsent
+      summary: Get per-jurisdiction channel consent and opt-out state
+      tags: [Permissions]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Consent in force
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeHcpConsent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setHcpConsent
+      summary: Record or amend channel consent captured from the HCP
+      tags: [Permissions]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HcpConsentUpsert"
+      responses:
+        "200":
+          description: Consent recorded with lawful basis and capture evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeHcpConsent"
+  /v1/actions:
+    get:
+      operationId: listSuggestedActions
+      summary: List the gated action queue for a field user
+      description: >-
+        Returns only actions whose permission evaluation currently passes. Refused
+        candidates are reported separately through the control ledger.
+      tags: [Actions]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: fieldUserId
+          in: query
+          schema:
+            type: string
+        - name: brandId
+          in: query
+          schema:
+            type: string
+        - name: engagementModeCode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Executable actions page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeSuggestedAction"
+  /v1/actions/{actionId}/rationale:
+    parameters:
+      - $ref: "#/components/parameters/ActionId"
+    get:
+      operationId: getTargetingRationale
+      summary: Get the business-language rationale for why this HCP, message and timing
+      tags: [Actions]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Targeting rationale with licensed-data use attestation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeTargetingRationale"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/actions/{actionId}/unblock-request:
+    parameters:
+      - $ref: "#/components/parameters/ActionId"
+    post:
+      operationId: requestActionUnblock
+      summary: Route a refused action to the owner who can clear it
+      tags: [Actions]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refusalCode]
+              properties:
+                refusalCode:
+                  $ref: "#/components/schemas/RefusalCode"
+                requestedBy:
+                  type: string
+                note:
+                  type: string
+      responses:
+        "202":
+          description: Unblock request routed to reviewer, affiliate lead, or consent capture
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeSuggestedAction"
+  /v1/interactions:
+    post:
+      operationId: recordInteraction
+      summary: Open an interaction against an executed action
+      tags: [Interactions]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InteractionCreate"
+      responses:
+        "201":
+          description: Interaction opened with outstanding closure duties listed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeInteraction"
+  /v1/interactions/{interactionId}/close:
+    parameters:
+      - $ref: "#/components/parameters/InteractionId"
+    post:
+      operationId: closeInteraction
+      summary: Close an interaction once transparency and safety duties are discharged
+      tags: [Interactions]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adverseEventMentioned]
+              properties:
+                adverseEventMentioned:
+                  type: boolean
+                productComplaintMentioned:
+                  type: boolean
+                callNote:
+                  type: string
+      responses:
+        "200":
+          description: Interaction closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeInteraction"
+        "409":
+          description: Adverse event routing unconfirmed or transfer of value uncaptured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/interactions/{interactionId}/transfers-of-value:
+    parameters:
+      - $ref: "#/components/parameters/InteractionId"
+    post:
+      operationId: captureTransferOfValue
+      summary: Capture a reportable transfer of value at the point of interaction
+      tags: [Transparency]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferOfValueCreate"
+      responses:
+        "201":
+          description: Transfer captured and mapped to the jurisdiction's disclosure rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeTransferOfValue"
+  /v1/transparency/submissions:
+    get:
+      operationId: listDisclosureSubmissions
+      summary: List statutory disclosure submissions by jurisdiction and period
+      tags: [Transparency]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: regime
+          in: query
+          schema:
+            type: string
+            enum: [us_open_payments, efpia_disclosure_code, local_statutory, voluntary]
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: 2026
+      responses:
+        "200":
+          description: Disclosure submissions page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeDisclosureSubmission"
+  /v1/transparency/submissions/{submissionId}/reconciliation:
+    parameters:
+      - $ref: "#/components/parameters/SubmissionId"
+    post:
+      operationId: reconcileDisclosureSubmission
+      summary: Reconcile captured transfers to a submission without manual rework
+      tags: [Transparency]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reconciledBy:
+                  type: string
+                acceptVariances:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Reconciliation result with unmatched and disputed transfers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDisclosureSubmission"
+  /v1/safety/adverse-events:
+    post:
+      operationId: captureAdverseEvent
+      summary: Capture an adverse event or product complaint from any interaction
+      tags: [Safety]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdverseEventCaptureCreate"
+      responses:
+        "201":
+          description: Capture recorded with pharmacovigilance routing clock started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeAdverseEventCapture"
+  /v1/information-requests:
+    get:
+      operationId: listInformationRequests
+      summary: List unsolicited information requests handled as scientific exchange
+      description: >-
+        Accessible to medical identities only. Commercial identities receive 403, which
+        is how the medical-commercial read boundary is enforced.
+      tags: [Medical]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [received, triaged, fulfilled, escalated, closed]
+      responses:
+        "200":
+          description: Information requests page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeInformationRequest"
+        "403":
+          description: Commercial identity attempted to read scientific exchange content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/information-requests/{requestId}/fulfilment:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      operationId: fulfilInformationRequest
+      summary: Record fulfilment of an unsolicited request with its reference set
+      tags: [Medical]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [responseReferenceIds, fulfilledBy]
+              properties:
+                responseReferenceIds:
+                  type: array
+                  items:
+                    type: string
+                fulfilledBy:
+                  type: string
+                responseSummary:
+                  type: string
+      responses:
+        "200":
+          description: Fulfilment recorded as scientific exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeInformationRequest"
+  /v1/payer/value-dossiers:
+    get:
+      operationId: listValueDossiers
+      summary: List approved economic evidence dossiers for payer engagement
+      tags: [Payer]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: brandId
+          in: query
+          schema:
+            type: string
+        - name: payerOrganisationId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Value dossiers page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeValueDossier"
+  /v1/payer/engagements:
+    post:
+      operationId: recordPayerEngagement
+      summary: Record a payer or health-system engagement against its committed metric
+      tags: [Payer]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayerEngagementCreate"
+      responses:
+        "201":
+          description: Engagement recorded under the payer evidence mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeInteraction"
+        "409":
+          description: Promotional claim attempted inside a payer evidence engagement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/mlr-reviews:
+    get:
+      operationId: listMlrReviews
+      summary: List medical, legal and regulatory reviews and their claim deltas
+      tags: [Governance]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [queued, in_review, approved, rejected, withdrawn]
+      responses:
+        "200":
+          description: MLR reviews page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeMlrReview"
+    post:
+      operationId: submitClaimDelta
+      summary: Submit only the delta between a proposed message and approved claims
+      tags: [Governance]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MlrReviewCreate"
+      responses:
+        "201":
+          description: Review queued, or auto-resolved by claim reuse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeMlrReview"
+  /v1/market-activations:
+    post:
+      operationId: activateAssetInMarket
+      summary: Record local affiliate approval activating an asset in a market
+      tags: [Governance]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketActivationCreate"
+      responses:
+        "201":
+          description: Asset activated in market
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeMarketActivation"
+        "403":
+          description: Approver does not hold activation authority for this market
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/governance/control-events:
+    get:
+      operationId: listControlEvents
+      summary: List blocked actions, wall breaches, and patient-data access attempts
+      tags: [Governance]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: controlType
+          in: query
+          schema:
+            type: string
+            enum:
+              [
+                action_refused,
+                wall_read_blocked,
+                patient_data_access_blocked,
+                licensed_data_restriction_enforced,
+                off_label_claim_blocked,
+                expired_asset_blocked,
+              ]
+      responses:
+        "200":
+          description: Control events page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeControlEvent"
+  /v1/reports/engagement-performance:
+    get:
+      operationId: getEngagementPerformance
+      summary: Get execution rate, asset utilisation and cost per engaged HCP
+      tags: [Reporting]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: brandId
+          in: query
+          schema:
+            type: string
+        - name: market
+          in: query
+          schema:
+            type: string
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: 2026-Q3
+      responses:
+        "200":
+          description: Engagement performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeEngagementPerformanceMetric"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    BrandId:
+      name: brandId
+      in: path
+      required: true
+      schema:
+        type: string
+    AssetId:
+      name: assetId
+      in: path
+      required: true
+      schema:
+        type: string
+    HcpId:
+      name: hcpId
+      in: path
+      required: true
+      schema:
+        type: string
+    ActionId:
+      name: actionId
+      in: path
+      required: true
+      schema:
+        type: string
+    InteractionId:
+      name: interactionId
+      in: path
+      required: true
+      schema:
+        type: string
+    SubmissionId:
+      name: submissionId
+      in: path
+      required: true
+      schema:
+        type: string
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    ResponseMeta:
+      type: object
+      required: [requestId, timestamp]
+      properties:
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        refusalCode:
+          $ref: "#/components/schemas/RefusalCode"
+        unblockOwnerRole:
+          type: string
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: EUR
+    RefusalCode:
+      type: string
+      enum:
+        [
+          off_label_for_market,
+          asset_expired,
+          asset_not_activated_in_market,
+          claim_not_approved,
+          engagement_mode_not_permitted_for_role,
+          channel_consent_missing,
+          hcp_opted_out,
+          transparency_rule_uncomputable,
+          licensed_data_restriction,
+          medical_commercial_wall,
+          patient_data_excluded,
+          affiliate_approval_pending,
+        ]
+    Brand:
+      type: object
+      required: [id, name, therapeuticArea]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        therapeuticArea:
+          type: string
+        launchPhase:
+          type: string
+          enum: [pre_launch, launch, growth, mature, loss_of_exclusivity]
+        markets:
+          type: array
+          items:
+            type: string
+        indicationIds:
+          type: array
+          items:
+            type: string
+    Indication:
+      type: object
+      required: [id, brandId, description]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        description:
+          type: string
+        approvedMarkets:
+          type: array
+          items:
+            type: string
+        populationRestrictions:
+          type: string
+    LabelVersion:
+      type: object
+      required: [id, brandId, market, version, effectiveFrom]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        market:
+          type: string
+          description: ISO country code for the locally approved label
+        version:
+          type: string
+        indicationIds:
+          type: array
+          items:
+            type: string
+        effectiveFrom:
+          type: string
+          format: date
+        supersedesVersionId:
+          type: string
+        sourceRepositoryRef:
+          type: string
+        withdrawalCascade:
+          type: object
+          properties:
+            assetsWithdrawn:
+              type: integer
+            queuedActionsPurged:
+              type: integer
+            completedAt:
+              type: string
+              format: date-time
+    LabelVersionCreate:
+      type: object
+      required: [market, version, effectiveFrom, indicationIds]
+      properties:
+        market:
+          type: string
+        version:
+          type: string
+        indicationIds:
+          type: array
+          items:
+            type: string
+        effectiveFrom:
+          type: string
+          format: date
+        sourceRepositoryRef:
+          type: string
+    ApprovedClaim:
+      type: object
+      required: [id, brandId, market, text, status]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        market:
+          type: string
+        text:
+          type: string
+        indicationId:
+          type: string
+        labelVersionId:
+          type: string
+        references:
+          type: array
+          items:
+            type: object
+            properties:
+              referenceId:
+                type: string
+              citation:
+                type: string
+              retracted:
+                type: boolean
+        status:
+          type: string
+          enum: [approved, superseded, withdrawn]
+        approvedAt:
+          type: string
+          format: date
+        expiresAt:
+          type: string
+          format: date
+        reuseCount:
+          type: integer
+          description: Times reused instead of triggering a fresh MLR review
+    ApprovedAsset:
+      type: object
+      required: [id, brandId, contentClass, status]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        title:
+          type: string
+        contentClass:
+          type: string
+          enum:
+            [
+              detail_aid,
+              approved_email,
+              leave_behind,
+              congress_material,
+              value_dossier,
+              medical_response_document,
+              patient_material,
+            ]
+        claimIds:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [in_review, approved, expiring, expired, withdrawn]
+        validFrom:
+          type: string
+          format: date
+        validUntil:
+          type: string
+          format: date
+        activatedMarkets:
+          type: array
+          items:
+            type: string
+        contentSystemRef:
+          type: string
+        withdrawalReason:
+          type: string
+    EngagementMode:
+      type: object
+      required: [code, label, permittedRoles]
+      properties:
+        code:
+          type: string
+          enum:
+            [promotional_detailing, scientific_exchange, payer_evidence, reimbursement_support]
+        label:
+          type: string
+        permittedRoles:
+          type: array
+          items:
+            type: string
+            enum:
+              [
+                sales_representative,
+                specialty_account_manager,
+                medical_science_liaison,
+                field_reimbursement_manager,
+                payer_account_director,
+              ]
+        permittedContentClasses:
+          type: array
+          items:
+            type: string
+        permittedChannels:
+          type: array
+          items:
+            type: string
+            enum: [face_to_face, approved_email, remote_detail, congress, portal, phone]
+        solicitationRule:
+          type: string
+          enum: [may_initiate, unsolicited_request_only]
+        wallSegregated:
+          type: boolean
+    HealthcareProfessional:
+      type: object
+      required: [id, market, specialty]
+      properties:
+        id:
+          type: string
+        market:
+          type: string
+        specialty:
+          type: string
+        licenceNumber:
+          type: string
+        organisationId:
+          type: string
+        prescriberStatus:
+          type: string
+          enum: [prescriber, non_prescriber, pharmacist, committee_member]
+        masterDataRef:
+          type: string
+    HcpConsent:
+      type: object
+      required: [hcpId, market, channels]
+      properties:
+        hcpId:
+          type: string
+        market:
+          type: string
+        channels:
+          type: array
+          items:
+            type: object
+            required: [channel, permitted]
+            properties:
+              channel:
+                type: string
+                enum: [approved_email, remote_detail, phone, sms, portal, face_to_face]
+              permitted:
+                type: boolean
+              capturedAt:
+                type: string
+                format: date-time
+        lawfulBasis:
+          type: string
+          enum: [consent, legitimate_interest, contract, not_permitted]
+        optOutAt:
+          type: string
+          format: date-time
+        captureEvidenceRef:
+          type: string
+    HcpConsentUpsert:
+      type: object
+      required: [market, channels, lawfulBasis]
+      properties:
+        market:
+          type: string
+        channels:
+          type: array
+          items:
+            type: object
+            required: [channel, permitted]
+            properties:
+              channel:
+                type: string
+              permitted:
+                type: boolean
+        lawfulBasis:
+          type: string
+          enum: [consent, legitimate_interest, contract, not_permitted]
+        captureEvidenceRef:
+          type: string
+    PermissionEvaluationRequest:
+      type: object
+      required: [audienceId, audienceType, messageClaimIds, channel, engagementModeCode]
+      properties:
+        audienceId:
+          type: string
+        audienceType:
+          type: string
+          enum: [healthcare_professional, payer_organisation, health_system_committee]
+        brandId:
+          type: string
+        messageClaimIds:
+          type: array
+          items:
+            type: string
+        assetId:
+          type: string
+        channel:
+          type: string
+        engagementModeCode:
+          type: string
+        fieldUserId:
+          type: string
+        market:
+          type: string
+    PermissionEvaluation:
+      type: object
+      required: [executable, evaluatedAt]
+      properties:
+        executable:
+          type: boolean
+        evaluatedAt:
+          type: string
+          format: date-time
+        labelVersionId:
+          type: string
+        assetValidUntil:
+          type: string
+          format: date
+        refusals:
+          type: array
+          items:
+            type: object
+            required: [code]
+            properties:
+              code:
+                $ref: "#/components/schemas/RefusalCode"
+              detail:
+                type: string
+              unblockOwnerRole:
+                type: string
+                enum:
+                  [
+                    mlr_reviewer,
+                    affiliate_commercial_lead,
+                    field_user,
+                    compliance_officer,
+                    data_steward,
+                  ]
+              estimatedUnblockDays:
+                type: integer
+        transparencyObligation:
+          type: object
+          properties:
+            regime:
+              type: string
+            reportable:
+              type: boolean
+            recipientCategory:
+              type: string
+    SuggestedAction:
+      type: object
+      required: [id, audienceId, engagementModeCode, state]
+      properties:
+        id:
+          type: string
+        audienceId:
+          type: string
+        audienceType:
+          type: string
+        brandId:
+          type: string
+        assetId:
+          type: string
+        claimIds:
+          type: array
+          items:
+            type: string
+        channel:
+          type: string
+        engagementModeCode:
+          type: string
+        fieldUserId:
+          type: string
+        priorityRank:
+          type: integer
+        suggestedFor:
+          type: string
+          format: date
+        state:
+          type: string
+          enum: [eligible, refused, unblock_requested, executed, expired, purged]
+        permissionEvaluation:
+          $ref: "#/components/schemas/PermissionEvaluation"
+        executedWithoutRework:
+          type: boolean
+    TargetingRationale:
+      type: object
+      required: [actionId, whyAudience, whyMessage, whyNow]
+      properties:
+        actionId:
+          type: string
+        whyAudience:
+          type: string
+        whyMessage:
+          type: string
+        whyNow:
+          type: string
+        signalsUsed:
+          type: array
+          items:
+            type: object
+            properties:
+              signal:
+                type: string
+              source:
+                type: string
+                enum:
+                  [
+                    first_party_interaction,
+                    licensed_prescribing_data,
+                    congress_attendance,
+                    formulary_status,
+                    consent_state,
+                  ]
+              licensedUseRestriction:
+                type: string
+              restrictionHonoured:
+                type: boolean
+        patientDataExcluded:
+          type: boolean
+          default: true
+        explainableToMonitor:
+          type: boolean
+    Interaction:
+      type: object
+      required: [id, audienceId, engagementModeCode, state]
+      properties:
+        id:
+          type: string
+        actionId:
+          type: string
+        audienceId:
+          type: string
+        audienceType:
+          type: string
+        engagementModeCode:
+          type: string
+        fieldUserId:
+          type: string
+        channel:
+          type: string
+        market:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        assetsPresented:
+          type: array
+          items:
+            type: string
+        state:
+          type: string
+          enum: [open, closed, blocked_on_duties]
+        outstandingDuties:
+          type: array
+          items:
+            type: string
+            enum:
+              [
+                transfer_of_value_capture,
+                adverse_event_routing,
+                product_complaint_routing,
+                call_note,
+              ]
+        crmRef:
+          type: string
+        committedOutcomeMetric:
+          type: string
+          description: Present for payer evidence engagements
+    InteractionCreate:
+      type: object
+      required: [actionId, audienceId, occurredAt]
+      properties:
+        actionId:
+          type: string
+        audienceId:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        channel:
+          type: string
+        assetsPresented:
+          type: array
+          items:
+            type: string
+    TransferOfValueCreate:
+      type: object
+      required: [recipientId, category, amount]
+      properties:
+        recipientId:
+          type: string
+        recipientType:
+          type: string
+          enum: [healthcare_professional, healthcare_organisation, patient_organisation]
+        category:
+          type: string
+          enum:
+            [
+              meal,
+              travel,
+              accommodation,
+              honorarium,
+              consulting_fee,
+              educational_material,
+              registration_fee,
+              research_grant,
+            ]
+        amount:
+          $ref: "#/components/schemas/Money"
+        market:
+          type: string
+    TransferOfValue:
+      type: object
+      required: [id, interactionId, recipientId, category, amount, regime]
+      properties:
+        id:
+          type: string
+        interactionId:
+          type: string
+        recipientId:
+          type: string
+        recipientType:
+          type: string
+        category:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        market:
+          type: string
+        regime:
+          type: string
+          enum: [us_open_payments, efpia_disclosure_code, local_statutory, not_reportable]
+        reportingPeriod:
+          type: string
+        submissionId:
+          type: string
+        reconciliationState:
+          type: string
+          enum: [captured, matched, unmatched, disputed, submitted]
+        capturedAt:
+          type: string
+          format: date-time
+    DisclosureSubmission:
+      type: object
+      required: [id, regime, period, state]
+      properties:
+        id:
+          type: string
+        regime:
+          type: string
+          enum: [us_open_payments, efpia_disclosure_code, local_statutory, voluntary]
+        market:
+          type: string
+        period:
+          type: string
+        state:
+          type: string
+          enum: [accumulating, reconciling, filed, restated]
+        transferCount:
+          type: integer
+        totalValue:
+          $ref: "#/components/schemas/Money"
+        unmatchedCount:
+          type: integer
+        disputedCount:
+          type: integer
+        manualReworkItems:
+          type: integer
+        filedAt:
+          type: string
+          format: date-time
+        restatementReason:
+          type: string
+    AdverseEventCaptureCreate:
+      type: object
+      required: [interactionId, narrative, reporterType]
+      properties:
+        interactionId:
+          type: string
+        narrative:
+          type: string
+        reporterType:
+          type: string
+          enum: [healthcare_professional, patient, caregiver, field_user_observed]
+        suspectedProductId:
+          type: string
+        seriousnessIndicated:
+          type: boolean
+        productComplaint:
+          type: boolean
+    AdverseEventCapture:
+      type: object
+      required: [id, interactionId, routingState, routingDeadline]
+      properties:
+        id:
+          type: string
+        interactionId:
+          type: string
+        engagementModeCode:
+          type: string
+        narrative:
+          type: string
+        reporterType:
+          type: string
+        suspectedProductId:
+          type: string
+        seriousnessIndicated:
+          type: boolean
+        productComplaint:
+          type: boolean
+        routingState:
+          type: string
+          enum: [captured, routed, acknowledged_by_safety, failed]
+        routingDeadline:
+          type: string
+          format: date-time
+          description: Serious cases carry the 24-hour clock
+        safetyCaseRef:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+    InformationRequest:
+      type: object
+      required: [id, hcpId, status, unsolicited]
+      properties:
+        id:
+          type: string
+        hcpId:
+          type: string
+        brandId:
+          type: string
+        questionSummary:
+          type: string
+        unsolicited:
+          type: boolean
+          description: Scientific exchange requires an unsolicited origin
+        status:
+          type: string
+          enum: [received, triaged, fulfilled, escalated, closed]
+        assignedMslId:
+          type: string
+        responseReferenceIds:
+          type: array
+          items:
+            type: string
+        responseSummary:
+          type: string
+        wallSegregated:
+          type: boolean
+          default: true
+        receivedAt:
+          type: string
+          format: date-time
+        fulfilledAt:
+          type: string
+          format: date-time
+    MlrReview:
+      type: object
+      required: [id, brandId, state, deltaType]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        market:
+          type: string
+        proposedMessage:
+          type: string
+        matchedClaimIds:
+          type: array
+          items:
+            type: string
+        deltaType:
+          type: string
+          enum:
+            [
+              no_delta_reuse,
+              wording_variation,
+              new_claim,
+              new_reference,
+              new_indication,
+              new_audience,
+            ]
+        deltaDescription:
+          type: string
+        state:
+          type: string
+          enum: [queued, in_review, approved, rejected, withdrawn]
+        reviewers:
+          type: array
+          items:
+            type: object
+            properties:
+              discipline:
+                type: string
+                enum: [medical, legal, regulatory]
+              reviewerId:
+                type: string
+              decision:
+                type: string
+                enum: [pending, approved, rejected]
+        submittedAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+        daysToMarketReady:
+          type: integer
+    MlrReviewCreate:
+      type: object
+      required: [brandId, proposedMessage, market]
+      properties:
+        brandId:
+          type: string
+        market:
+          type: string
+        proposedMessage:
+          type: string
+        intendedContentClass:
+          type: string
+        intendedAudienceType:
+          type: string
+        submittedBy:
+          type: string
+    MarketActivationCreate:
+      type: object
+      required: [assetId, market, approvedBy]
+      properties:
+        assetId:
+          type: string
+        market:
+          type: string
+        approvedBy:
+          type: string
+        localConditions:
+          type: array
+          items:
+            type: string
+    MarketActivation:
+      type: object
+      required: [id, assetId, market, approvedBy, activatedAt]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        market:
+          type: string
+        approvedBy:
+          type: string
+        approverRole:
+          type: string
+          enum: [affiliate_commercial_lead, local_regulatory_lead, country_medical_director]
+        localConditions:
+          type: array
+          items:
+            type: string
+        labelVersionId:
+          type: string
+        activatedAt:
+          type: string
+          format: date-time
+        deactivatedAt:
+          type: string
+          format: date-time
+    PayerOrganisation:
+      type: object
+      required: [id, name, type]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [national_payer, regional_payer, hta_body, integrated_delivery_network, hospital_group]
+        market:
+          type: string
+        formularyStatus:
+          type: string
+          enum: [not_listed, restricted, preferred, under_review]
+    ValueDossier:
+      type: object
+      required: [id, brandId, status]
+      properties:
+        id:
+          type: string
+        brandId:
+          type: string
+        title:
+          type: string
+        economicEvidence:
+          type: array
+          items:
+            type: object
+            properties:
+              metric:
+                type: string
+                enum:
+                  [
+                    cost_per_episode,
+                    length_of_stay,
+                    admission_rate,
+                    readmission_rate,
+                    total_cost_of_care,
+                    adherence_rate,
+                  ]
+              effectSize:
+                type: number
+                format: float
+              evidenceSource:
+                type: string
+        promotionalClaimsExcluded:
+          type: boolean
+          default: true
+        status:
+          type: string
+          enum: [draft, approved, expired, withdrawn]
+        approvedBy:
+          type: string
+        validUntil:
+          type: string
+          format: date
+    PayerEngagementCreate:
+      type: object
+      required: [payerOrganisationId, valueDossierId, committedOutcomeMetric, occurredAt]
+      properties:
+        payerOrganisationId:
+          type: string
+        valueDossierId:
+          type: string
+        committedOutcomeMetric:
+          type: string
+          enum:
+            [
+              cost_per_episode,
+              length_of_stay,
+              admission_rate,
+              readmission_rate,
+              total_cost_of_care,
+              adherence_rate,
+            ]
+        attendeeRoles:
+          type: array
+          items:
+            type: string
+        occurredAt:
+          type: string
+          format: date-time
+    ControlEvent:
+      type: object
+      required: [id, controlType, occurredAt]
+      properties:
+        id:
+          type: string
+        controlType:
+          type: string
+          enum:
+            [
+              action_refused,
+              wall_read_blocked,
+              patient_data_access_blocked,
+              licensed_data_restriction_enforced,
+              off_label_claim_blocked,
+              expired_asset_blocked,
+            ]
+        actorId:
+          type: string
+        actorRole:
+          type: string
+        subjectId:
+          type: string
+        refusalCode:
+          $ref: "#/components/schemas/RefusalCode"
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        retainedUntil:
+          type: string
+          format: date
+          description: Aligned to any Corporate Integrity Agreement term plus audit tail
+    EngagementPerformanceMetric:
+      type: object
+      required: [period, brandId]
+      properties:
+        period:
+          type: string
+        brandId:
+          type: string
+        market:
+          type: string
+        suggestedActions:
+          type: integer
+        executedWithoutReworkPct:
+          type: number
+          format: float
+        refusalsByCode:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                $ref: "#/components/schemas/RefusalCode"
+              count:
+                type: integer
+              medianUnblockDays:
+                type: number
+                format: float
+        approvedAssetUtilisationPct:
+          type: number
+          format: float
+        mlrReviewsPerIndication:
+          type: number
+          format: float
+        claimReusePct:
+          type: number
+          format: float
+        marketingCostPerEngagedHcp:
+          $ref: "#/components/schemas/Money"
+        marketingCostChangePct:
+          type: number
+          format: float
+        brandPerformanceLiftPct:
+          type: number
+          format: float
+        payerCommitmentsMetPct:
+          type: number
+          format: float
+        adverseEventsRoutedOnTimePct:
+          type: number
+          format: float
+    DataEnvelopeLabelVersion:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/LabelVersion"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeApprovedAsset:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ApprovedAsset"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopePermissionEvaluation:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/PermissionEvaluation"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeHcpConsent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/HcpConsent"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeSuggestedAction:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SuggestedAction"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeTargetingRationale:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TargetingRationale"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeInteraction:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Interaction"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeTransferOfValue:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransferOfValue"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeDisclosureSubmission:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DisclosureSubmission"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeAdverseEventCapture:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AdverseEventCapture"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeInformationRequest:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/InformationRequest"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeMlrReview:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/MlrReview"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeMarketActivation:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/MarketActivation"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeEngagementPerformanceMetric:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/EngagementPerformanceMetric"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeBrand:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Brand"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeIndication:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Indication"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeHealthcareProfessional:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthcareProfessional"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopePayerOrganisation:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/PayerOrganisation"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeLabelVersion:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/LabelVersion"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeApprovedClaim:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ApprovedClaim"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeApprovedAsset:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ApprovedAsset"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeEngagementMode:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EngagementMode"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeSuggestedAction:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/SuggestedAction"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeDisclosureSubmission:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DisclosureSubmission"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeInformationRequest:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/InformationRequest"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeValueDossier:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ValueDossier"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeMlrReview:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/MlrReview"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeControlEvent:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ControlEvent"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
